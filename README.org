@@ -1,0 +1,17 @@
+* CSL
+  CSL is a stack language like forth but (right now) less
+  reliable. The goal is to get  something that is an in-between
+  between forth and lisp, can do i/o more easily, and is fun to
+  program in. 
+
+  #+BEGIN_EXAMPLE
+  $ make
+  ...
+  $ ./csl
+  1 2 PRINT
+  1 2
+  + 
+  3
+  #+END_EXAMPLE
+  
+  
