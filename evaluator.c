@@ -187,7 +187,6 @@ evaluate_if (void)
 	  free_stack_elem (stack_head);
 	  stack_head = s->next;
 	  s->next = NULL;
-	  free_stack_elem (s);
 	  free_stack (if_stack);
 	  pop_atom ();		/* pop of the conditional which was
 				   false. */

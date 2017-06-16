@@ -39,10 +39,14 @@
  */
 
 int
-main (void)
+main (int argc, char **argv)
 {
   struct atom *a = NULL;
 
+  if (argc == 2)
+      scanner_scan_file (argv[1]);
+
+  scanner_init ();
   evaluator_init ();
   
   while ( (a = get_atom ()))
@@ -51,7 +55,5 @@ main (void)
       evaluate ();
     }
   evaluator_cleanup ();
-  
-
 }
 

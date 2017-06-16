@@ -1,5 +1,9 @@
 #ifndef _SCANNER_H_
 #define _SCANNER_H_
+#include <stdio.h>
+#include <string.h>
+#include <strings.h>
+
 
 enum atom_type
   {
@@ -22,4 +26,7 @@ struct atom
 
 struct atom *
 get_atom (void);
+void scanner_scan_file (char *);
+void scanner_init (void);
+
 #endif

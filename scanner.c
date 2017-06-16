@@ -4,6 +4,8 @@
 
 void scan_start (void);
 int scanner_eof (void);
+FILE *scanner_fp = NULL;
+
 struct scanner
 {
   int c;
@@ -75,15 +77,16 @@ get_atom (void)
   scanner_reinit ();
   a->type = ATOM_INVALID;
   a->value_sym = NULL;
-  
-  while (scanner_getch ())
-    ;
   if (scanner_eof ())
     {
       free (a);
       return NULL;
     }
-  else if (scanner.type == ATOM_INT)
+  
+  while (scanner_getch ())
+    ;
+
+   if (scanner.type == ATOM_INT)
     {
       a->value_i = atoi (scanner.output_value);
       a->type = ATOM_INT;
@@ -107,6 +110,19 @@ get_atom (void)
 void (*scan_end)(void) = NULL;
 void scan_num (void);
 void scan_sym (void);
+void
+scanner_scan_file (char *fname)
+{
+  if ( !(scanner_fp = fopen (fname, "r")))
+    scanner_die ("can't open file");
+}
+
+void
+scanner_init (void)
+{
+  if (!scanner_fp)
+    scanner_fp = stdin;
+}
 
 int
 scanner_isspace (int c)
@@ -155,7 +171,7 @@ scanner_getch (void)
 
   if (scanner.bufpos > 0)
     scanner.c = scanner.buf[--scanner.bufpos];
-  else if ( (scanner.c = getchar ()) == '\n')
+  else if ( (scanner.c = getc (scanner_fp)) == '\n')
     {
       scanner.c = ' ';
       scanner.charno++;
@@ -168,6 +184,7 @@ scanner_getch (void)
     }
   else
     scanner.charno++;
+
 
   scanner.state ();
   return 1;

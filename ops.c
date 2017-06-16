@@ -228,6 +228,7 @@ push_atom (struct atom *a)
   struct stack *s = make_stack_elem (a);
   s->next = stack_head;
   stack_head = s;
+  //  __print_stack (stack_head);
 }
 
 
