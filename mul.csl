@@ -1,0 +1,30 @@
+DEFINE __MUL
+  ROT DUP
+  IF ROT
+     TWODUP
+     NIP
+     TWOSWAP
+     ROT
+     ROT
+     +
+     ROT
+     ROT
+     1
+     -
+     ROT
+     ROT
+     SWAP
+     __MUL
+  ELSE
+   POP NIP
+  ENDIF
+ENDEF
+
+DEFINE MUL
+  0 __MUL
+ENDEF
+
+
+
+21 3 MUL
+PRINT
