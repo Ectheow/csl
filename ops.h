@@ -1,59 +1,56 @@
 #ifndef _OPS_H_
 #define _OPS_H_
 void
-rot (void);
+csl_rot (void);
 
 void
-swap (void);
+csl_swap (void);
 
 void
-nip (void);
+csl_nip (void);
 
 void
-twodup (void);
+csl_twodup (void);
 
 void
-twoswap (void);
+csl_twoswap (void);
 struct atom * atom_copy(struct atom *);
 
 void
-define (void);
+csl_define (void);
 
 void
-evaluator_init (void);
+csl_if (void);
 
 void
-if_symbol (void);
+csl_dup (void);
 
 void
-dup (void);
+csl_plus (void);
 
 void
-add_stack (void);
+csl_sub (void);
 
 void
-sub_stack (void);
+csl_push (struct atom *a);
 
 void
-push_atom (struct atom *a);
+csl_pop (void);
 
-void
-pop_atom (void);
-
-void print_stack (void);
-void pop_stack (void);
+void csl_print (void);
+void csl_pop (void);
 
 
 void
-plus (void);
+csl_plus (void);
 
 void
-minus (void);
+csl_minus (void);
 
 void
-divide (void);
+csl_divide (void);
 
 void
-multiply (void);
+csl_multiply (void);
 
 #endif

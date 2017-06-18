@@ -2,6 +2,7 @@
 #define _EVALUATOR_H_
 #include "stack.h"
 #include "scanner.h"
+#include "error.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -11,14 +12,17 @@
 #define PRINT "PRINT"
 #define IF "IF"
 #define ENDIF "ENDIF"
+
 struct evaluator
 {
   void (*eval_func) (void);
+  struct stack *current;
   void *state_info;
   int in_def;
   int in_if;
 };
 
+extern struct evaluator evaluator; 
 enum op_type
   {
     OP_FUNCTION,
@@ -36,17 +40,15 @@ struct op
     void (*carry_out_op)(void);
   };
 };
+
 struct dictionary
 {
   struct dictionary *next;
   struct op *op;
 };
 
-// extern struct evaluator evaluator;
-extern struct stack *stack_head;
-void evaluate_stack (void);
-void evaluator_init (void);
+void evaluator_init (struct stack *s);
 void evaluator_cleanup (void);
 void evaluate (void);
-
+#define evaluator_die(msg, ...) error (1, msg, ##__VA_ARGS__)
 #endif	/* _EVALUATOR_H_ */

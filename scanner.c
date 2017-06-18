@@ -1,24 +1,14 @@
 #include "scanner.h"
+#include "stack.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <ctype.h>
 
 void scan_start (void);
 int scanner_eof (void);
 FILE *scanner_fp = NULL;
 
-struct scanner
-{
-  int c;
-  int is_eof;
-  int lineno;
-  int charno;
-  int bufpos;
-  char buf[BUFSIZ];
-  char output_value[BUFSIZ];
-  int output_value_pos;
-  enum atom_type type;
-  void (*state)(void);
-} scanner = {
+struct scanner scanner = {
   0,
   0,
   0,
@@ -28,19 +18,38 @@ struct scanner
   {0},
   0,
   ATOM_INVALID,
+  NULL,
   scan_start,
 };
 
-void
-scanner_die (char *msg)
+/* void */
+/* scanner_die (char *msg) */
+/* { */
+/*   fprintf (stderr, */
+/* 	   "SCAN ERROR: %s. Scanner state:" */
+/* 	   "\tchar = '%c' (%d)" */
+/* 	   "\tchar# = %d" */
+/* 	   "\tline = %d\n", */
+/* 	   msg, scanner.c, scanner.c, scanner.charno, scanner.lineno); */
+/*   exit (EXIT_FAILURE); */
+/* } */
+
+int
+scan_one (void)
 {
-  fprintf (stderr,
-	   "SCAN ERROR: %s. Scanner state:"
-	   "\tchar = %c (%d)"
-	   "\tchar# = %d"
-	   "\tline = %d\n",
-	   msg, scanner.c, scanner.c, scanner.charno, scanner.lineno);
-  exit (EXIT_FAILURE);
+  struct atom *a = NULL;
+
+  while (scanner.read_pos
+	 && scanner.read_pos->prev)
+    scanner.read_pos = scanner.read_pos->prev;
+  if ( (a = get_atom ()))
+    {
+      scanner.read_pos = stack_push (scanner.read_pos,
+				     make_stack_elem (a));
+      return 1;
+    }
+  else
+    return 0;
 }
 
 void
@@ -65,7 +74,23 @@ free_atom (struct atom *atom)
   else if (atom->type == ATOM_SYMBOL)
     free (atom->value_sym);
 
+  memset (atom, 0xab, sizeof *atom);
   free (atom);
+}
+
+char *
+atom_to_str (struct atom *atom)
+{
+  static char buf[BUFSIZ];
+  
+  if (atom->type == ATOM_SYMBOL)
+    snprintf (buf, BUFSIZ, "'%s'", atom->value_sym);
+  else if (atom->type == ATOM_FLOAT)
+    snprintf (buf, BUFSIZ, "%f", atom->value_f);
+  else if (atom->type == ATOM_INT)
+    snprintf (buf, BUFSIZ, "%d", atom->value_i);
+
+  return buf;
 }
 
 struct atom *
@@ -78,10 +103,7 @@ get_atom (void)
   a->type = ATOM_INVALID;
   a->value_sym = NULL;
   if (scanner_eof ())
-    {
-      free (a);
-      return NULL;
-    }
+    goto eof;
   
   while (scanner_getch ())
     ;
@@ -101,10 +123,15 @@ get_atom (void)
       a->value_sym = strdup (scanner.output_value);
       a->type = ATOM_SYMBOL;
     }
+  else if (scanner_eof ())
+    goto eof;
   else
-    scanner_die ("get_atom: bad atom type");
+    scanner_die ("bad atom type: '%d'", scanner.type);
   
   return a;
+ eof:
+  free (a);
+  return NULL;
 }
 
 void (*scan_end)(void) = NULL;
@@ -122,6 +149,7 @@ scanner_init (void)
 {
   if (!scanner_fp)
     scanner_fp = stdin;
+  scanner.read_pos = NULL;
 }
 
 int
@@ -184,7 +212,6 @@ scanner_getch (void)
     }
   else
     scanner.charno++;
-
 
   scanner.state ();
   return 1;

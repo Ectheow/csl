@@ -2,56 +2,88 @@
 #include "evaluator.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <ctype.h>
+
 
 struct stack *
-__pop_atom (void);
+__csl_pop (void);
 
 void
-pop_stack (void)
+__csl_push (struct stack *s)
 {
-  pop_atom ();			/* pop the pop symbol */
-  pop_atom ();
+  evaluator.current = stack_splice (evaluator.current, s);
+  /* evaluator.current = evaluator.current->prev; */
 }
 
 void
-swap (void)
+csl_push (struct atom *a)
+{
+  __csl_push (make_stack_elem (a));
+}
+
+struct stack *
+__csl_pop (void)
+{
+
+  struct stack *out = NULL;
+  if (!evaluator.current)
+    evaluator_die ("stack underflow");
+
+  evaluator.current = __stack_snip (evaluator.current, &out);
+  return out;
+}
+
+void
+csl_pop_one (void)
+{
+  struct stack *s = __csl_pop ();
+  free_stack_elem (s);
+}
+
+void
+csl_pop (void)
+{
+  csl_pop_one ();
+  csl_pop_one ();
+}
+
+
+void
+csl_swap (void)
 {
   struct stack *s1 = NULL, *s2 = NULL;
 
-  pop_atom ();
-  s1 = __pop_atom ();
-  s2 = __pop_atom ();
+  csl_pop_one ();
+  s1 = __csl_pop ();
+  s2 = __csl_pop ();
 
-  s2->next = s1;
-  s1->next = stack_head;
-  stack_head = s2;
+  __csl_push (s1);
+  __csl_push (s2);
 }
 
 void
-rot (void)
+csl_rot (void)
 {
   struct stack *s1 = NULL, *s2 = NULL, *s3 = NULL;
 
-  pop_atom ();
-  s3 = __pop_atom ();
-  s2 = __pop_atom ();
-  s1 = __pop_atom ();
+  csl_pop_one ();
+  s3 = __csl_pop ();
+  s2 = __csl_pop ();
+  s1 = __csl_pop ();
 
-  s1->next = s3;
-  s3->next = s2;
-  s2->next = stack_head;
-
-  stack_head = s1;
+  __csl_push (s2);
+  __csl_push (s3);
+  __csl_push (s1);
 }
 
 void
-twodup (void)
+csl_twodup (void)
 {
   struct stack *s1 = NULL, *s2 = NULL;
   struct atom *a1 = NULL, *a2 = NULL;
 
-  pop_atom ();
-  if (!(s1 = stack_head))
+  csl_pop_one ();
+  if (!(s1 = evaluator.current))
     evaluator_die ("stack underflow");
   if (!(s2 = s1->next))
     evaluator_die ("stack underflow");
@@ -59,72 +91,62 @@ twodup (void)
   a1 = atom_copy (s1->atom);
   a2 = atom_copy (s2->atom);
 
-  push_atom (a2);
-  push_atom (a1);
+  csl_push (a2);
+  csl_push (a1);
 }
 
 void
-nip (void)
+csl_nip (void)
 {
   struct stack *s1 = NULL;
 
-  pop_atom ();
-  s1 = __pop_atom ();
-  pop_atom ();
-  s1->next = stack_head;
-  stack_head = s1;
+  csl_pop_one ();
+  s1 = __csl_pop ();
+  csl_pop_one ();
+  __csl_push (s1);
 }
 
 void
-twoswap (void)
+csl_twoswap (void)
 {
   struct stack *s1 = NULL,
     *s2 = NULL,
     *s3 = NULL,
     *s4 = NULL;
 
-  pop_atom ();
-  s1 = __pop_atom ();
-  s2 = __pop_atom ();
-  s3 = __pop_atom ();
-  s4 = __pop_atom ();
-
-  s2->next = stack_head;
-  s4->next = s1;
-  stack_head = s3;
-}
-
-struct stack *
-__pop_atom (void)
-{
-  struct stack *s = stack_head;
-  if (!stack_head)
-    evaluator_die ("stack underflow");
-
-  stack_head = s->next;
-  return s;
-}
-
-void
-dup (void)
-{
-
+  csl_pop_one ();
+  s1 = __csl_pop ();
+  s2 = __csl_pop ();
+  s3 = __csl_pop ();
+  s4 = __csl_pop ();
   
-  pop_atom ();
-  if (!stack_head)
+  __csl_push (s4);  
+  __csl_push (s3);
+  
+  __csl_push (s2);
+  __csl_push (s1);
+}
+
+
+
+void
+csl_dup (void)
+{
+  csl_pop_one ();
+  if (!evaluator.current)
     evaluator_die ("stack underflow");
-  push_atom (atom_copy (stack_head->atom));
+  csl_push (atom_copy (evaluator.current->atom));
 }
 
 void
-__print_stack (struct stack *s)
+__csl_print (struct stack *s)
 {
 
   if (!s)
     return;
   else
     {
-      __print_stack (s->next);
+      __csl_print (s->next);
       if (s->atom->type == ATOM_FLOAT)
 	printf ("%f ", s->atom->value_f);
       else if (s->atom->type == ATOM_SYMBOL)
@@ -135,11 +157,11 @@ __print_stack (struct stack *s)
 }
 
 void
-print_stack (void)
+csl_print (void)
 {
 
-  pop_atom ();			/* pop the PRINT operation */
-  __print_stack (stack_head);
+  csl_pop_one ();			/* pop the PRINT operation */
+  __csl_print (evaluator.current);
   printf ("\n");
 
 }
@@ -160,9 +182,9 @@ do_arith (enum arith_op op)
   int i1, i2, is_int;
 
   is_int = 0;
-  pop_atom ();
-  s1 = __pop_atom ();
-  s2 = __pop_atom ();
+  csl_pop_one ();
+  s1 = __csl_pop ();
+  s2 = __csl_pop ();
   if (s1->atom->type == ATOM_INT
       && s2->atom->type == ATOM_INT)
     {
@@ -187,7 +209,9 @@ do_arith (enum arith_op op)
       d2 = s2->atom->value_i;
     }
   else
-    evaluator_die ("EVALUATOR ERROR: can't add two non-numbers");
+    evaluator_die ("EVALUATOR ERROR: can't add two non-numbers %s and %s",
+		   atom_to_str (s1->atom),
+		   atom_to_str (s2->atom));
 
   switch (op)
     {
@@ -207,36 +231,17 @@ do_arith (enum arith_op op)
   end:
   free_stack_elem (s1);
   free_stack_elem (s2);
-  push_atom (a);
+  csl_push (a);
 }
 
 void
-add_stack (void)
+csl_plus (void)
 {
   do_arith (ADD);
 }
 
 void
-sub_stack (void)
+csl_sub (void)
 {
   do_arith (SUB);
-}
-  
-void
-push_atom (struct atom *a)
-{
-  struct stack *s = make_stack_elem (a);
-  s->next = stack_head;
-  stack_head = s;
-  //  __print_stack (stack_head);
-}
-
-
-
-
-void
-pop_atom (void)
-{
-  struct stack *s = __pop_atom ();
-  free_stack_elem (s);
 }

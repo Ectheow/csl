@@ -5,6 +5,7 @@
 #include <string.h>
 #include "scanner.h"
 #include "evaluator.h"
+#include "ops.h"
 
 /*
  * the stack language will look like forth.
@@ -46,14 +47,17 @@ main (int argc, char **argv)
   if (argc == 2)
       scanner_scan_file (argv[1]);
 
+
   scanner_init ();
-  evaluator_init ();
-  
-  while ( (a = get_atom ()))
+
+  while (scan_one ())
     {
-      push_atom (a);
+      if (!evaluator.current)
+	evaluator_init (scanner.read_pos);
       evaluate ();
+      scanner.read_pos = evaluator.current;
     }
+  
   evaluator_cleanup ();
 }
 
