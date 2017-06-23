@@ -4,13 +4,6 @@
 #include "evaluator.h"
 #include "error.h"
 
-struct stack
-{
-  struct atom *atom;
-  struct stack *next;
-  struct stack *prev;
-};
-
 
 void free_stack_elem (struct stack *s);
 void free_stack (struct stack *s);
@@ -20,6 +13,7 @@ stack_make (void)
 {
   return NULL;
 }
+
 
 struct stack *stack_push_atom (struct stack *, struct atom *);
 struct stack *stack_push (struct stack *, struct stack *);

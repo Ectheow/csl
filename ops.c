@@ -1,43 +1,44 @@
 #include "ops.h"
 #include "evaluator.h"
+#include "list.h"
+#include "atoms.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
 
 
-struct stack *
+list_item_t
 __csl_pop (void);
 
 void
-__csl_push (struct stack *s)
+__csl_push (list_item_t s)
 {
-  evaluator.current = stack_splice (evaluator.current, s);
-  /* evaluator.current = evaluator.current->prev; */
+  list_push (evaluator_list (),
+	     s);
 }
 
 void
-csl_push (struct atom *a)
+csl_push (atom_t a)
 {
-  __csl_push (make_stack_elem (a));
+  __csl_push (make_list_item_from_atom (a));
 }
 
-struct stack *
+list_item_t
 __csl_pop (void)
 {
 
-  struct stack *out = NULL;
-  if (!evaluator.current)
+  list_item_t elem = NULL;
+  if (!list_size (evaluator_list ()))
     evaluator_die ("stack underflow");
-
-  evaluator.current = __stack_snip (evaluator.current, &out);
-  return out;
+  list_pop (evaluator_list (), &elem);
+  return elem;
 }
 
 void
 csl_pop_one (void)
 {
-  struct stack *s = __csl_pop ();
-  free_stack_elem (s);
+  list_item_t li = __csl_pop ();
+  list_item_free (evaluator_list (), li);
 }
 
 void
@@ -51,45 +52,44 @@ csl_pop (void)
 void
 csl_swap (void)
 {
-  struct stack *s1 = NULL, *s2 = NULL;
+  list_item_t li1 = NULL, li2 = NULL;
 
   csl_pop_one ();
-  s1 = __csl_pop ();
-  s2 = __csl_pop ();
+  li1 = __csl_pop ();
+  li2 = __csl_pop ();
 
-  __csl_push (s1);
-  __csl_push (s2);
+  __csl_push (li1);
+  __csl_push (li2);
 }
 
 void
 csl_rot (void)
 {
-  struct stack *s1 = NULL, *s2 = NULL, *s3 = NULL;
+  list_item_t li1 = NULL, li2 = NULL, li3 = NULL;
 
   csl_pop_one ();
-  s3 = __csl_pop ();
-  s2 = __csl_pop ();
-  s1 = __csl_pop ();
+  li3 = __csl_pop ();
+  li2 = __csl_pop ();
+  li1 = __csl_pop ();
 
-  __csl_push (s2);
-  __csl_push (s3);
-  __csl_push (s1);
+  __csl_push (li2);
+  __csl_push (li3);
+  __csl_push (li1);
 }
 
 void
 csl_twodup (void)
 {
-  struct stack *s1 = NULL, *s2 = NULL;
-  struct atom *a1 = NULL, *a2 = NULL;
-
+  list_item_t li1 = NULL, li2 = NULL;
+  
   csl_pop_one ();
-  if (!(s1 = evaluator.current))
+  if (! (li1 = list_head (evaluator_list ())))
     evaluator_die ("stack underflow");
-  if (!(s2 = s1->next))
+  if (! (li2 = list_item_next (li1)))
     evaluator_die ("stack underflow");
 
-  a1 = atom_copy (s1->atom);
-  a2 = atom_copy (s2->atom);
+  atom_t a1 = atom_copy (atom_from_list_item (li1));
+  atom_t a2 = atom_copy (atom_from_list_item (li2));
 
   csl_push (a2);
   csl_push (a1);
@@ -98,33 +98,35 @@ csl_twodup (void)
 void
 csl_nip (void)
 {
-  struct stack *s1 = NULL;
+  list_item_t li1 = NULL;
 
   csl_pop_one ();
-  s1 = __csl_pop ();
+  li1 = __csl_pop ();
   csl_pop_one ();
-  __csl_push (s1);
+  __csl_push (li1);
 }
 
 void
 csl_twoswap (void)
 {
-  struct stack *s1 = NULL,
-    *s2 = NULL,
-    *s3 = NULL,
-    *s4 = NULL;
+  list_item_t li1 = NULL,
+    li2 = NULL,
+    li3 = NULL,
+    li4 = NULL;
 
   csl_pop_one ();
-  s1 = __csl_pop ();
-  s2 = __csl_pop ();
-  s3 = __csl_pop ();
-  s4 = __csl_pop ();
+  li1 = __csl_pop ();
+  li2 = __csl_pop ();
+  li3 = __csl_pop ();
+  li4 = __csl_pop ();
   
-  __csl_push (s4);  
-  __csl_push (s3);
+
   
-  __csl_push (s2);
-  __csl_push (s1);
+  __csl_push (li2);
+  __csl_push (li1);
+
+  __csl_push (li4);  
+  __csl_push (li3);
 }
 
 
@@ -133,27 +135,19 @@ void
 csl_dup (void)
 {
   csl_pop_one ();
-  if (!evaluator.current)
+  if (list_empty (evaluator_list ()))
     evaluator_die ("stack underflow");
-  csl_push (atom_copy (evaluator.current->atom));
+  csl_push (atom_copy (evaluator_peek ()));
 }
 
 void
-__csl_print (struct stack *s)
+__csl_print (list_t li)
 {
 
-  if (!s)
-    return;
-  else
-    {
-      __csl_print (s->next);
-      if (s->atom->type == ATOM_FLOAT)
-	printf ("%f ", s->atom->value_f);
-      else if (s->atom->type == ATOM_SYMBOL)
-	printf ("%s ", s->atom->value_sym);
-      else if (s->atom->type == ATOM_INT)
-	printf ("%d ", s->atom->value_i);
-    }
+  for (list_item_t it = list_tail (li);
+       it;
+       it = list_item_prev (it))
+    atom_print (atom_from_list_item (it));
 }
 
 void
@@ -161,7 +155,7 @@ csl_print (void)
 {
 
   csl_pop_one ();			/* pop the PRINT operation */
-  __csl_print (evaluator.current);
+  __csl_print (evaluator_list ());
   printf ("\n");
 
 }
@@ -176,43 +170,45 @@ enum arith_op
 void
 do_arith (enum arith_op op)
 {
-  struct stack *s1 = NULL, *s2 = NULL;
-  struct atom *a;
-  double d1, d2;
+  list_item_t li1, li2;
   int i1, i2, is_int;
+  double d1, d2;
 
   is_int = 0;
   csl_pop_one ();
-  s1 = __csl_pop ();
-  s2 = __csl_pop ();
-  if (s1->atom->type == ATOM_INT
-      && s2->atom->type == ATOM_INT)
+  li1 = __csl_pop ();
+  li2 = __csl_pop ();
+  atom_t a1 = atom_from_list_item (li1);
+  atom_t a2 = atom_from_list_item (li2);
+  if (atom_is_int (a1)
+      && atom_is_int (a2))
     {
-      i1 = s1->atom->value_i;
-      i2 = s2->atom->value_i;
+      i1 = atom_int_value (a1);
+      i2 = atom_int_value (a2);
       is_int = 1;
     }
-  else if (s1->atom->type == ATOM_FLOAT
-	   && s2->atom->type == ATOM_FLOAT)
+  else if (atom_is_int (a1)
+	   && atom_is_float (a2))
     {
-      d1 = s1->atom->value_f;
-      d2 = s2->atom->value_f;
+      d1 = atom_float_value (a1);
+      d2 = atom_float_value (a2);
     }
-  else if (s1->atom->type == ATOM_INT)
+  else if (atom_is_int (a1))
     {
-      d1 = s1->atom->value_i;
-      d2 = s2->atom->value_f;
+      d1 = atom_int_value (a1);
+      d2 = atom_float_value (a2);
     }
-  else if (s2->atom->type == ATOM_INT)
+  else if (atom_is_int (a2))
     {
-      d1 = s1->atom->value_f;
-      d2 = s2->atom->value_i;
+      d1 = atom_float_value (a1);
+      d2 = atom_int_value (a2);
     }
   else
     evaluator_die ("EVALUATOR ERROR: can't add two non-numbers %s and %s",
-		   atom_to_str (s1->atom),
-		   atom_to_str (s2->atom));
+		   atom_to_str (a1),
+		   atom_to_str (a2));
 
+  atom_t a = NULL;
   switch (op)
     {
     case ADD:
@@ -229,8 +225,8 @@ do_arith (enum arith_op op)
       break;
     }
   end:
-  free_stack_elem (s1);
-  free_stack_elem (s2);
+  list_item_free (evaluator_list (), li1);
+  list_item_free (evaluator_list (), li2);
   csl_push (a);
 }
 

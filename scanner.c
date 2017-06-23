@@ -66,33 +66,6 @@ scanner_reinit (void)
 int
 scanner_getch (void);
 
-void
-free_atom (struct atom *atom)
-{
-  if (!atom)
-    return;
-  else if (atom->type == ATOM_SYMBOL)
-    free (atom->value_sym);
-
-  memset (atom, 0xab, sizeof *atom);
-  free (atom);
-}
-
-char *
-atom_to_str (struct atom *atom)
-{
-  static char buf[BUFSIZ];
-  
-  if (atom->type == ATOM_SYMBOL)
-    snprintf (buf, BUFSIZ, "'%s'", atom->value_sym);
-  else if (atom->type == ATOM_FLOAT)
-    snprintf (buf, BUFSIZ, "%f", atom->value_f);
-  else if (atom->type == ATOM_INT)
-    snprintf (buf, BUFSIZ, "%d", atom->value_i);
-
-  return buf;
-}
-
 struct atom *
 get_atom (void)
 {
@@ -272,28 +245,4 @@ scan_sym (void)
     scanner.output_value[scanner.output_value_pos++] = scanner.c;
   else
     scanner_die ("scan_sym: invalid char while scanning a symbol");
-}
-
-
-struct atom *
-make_int_atom (int i)
-{
-  struct atom *a = malloc (sizeof *a);
-  
-  a->type = ATOM_INT;
-  a->value_i = i;
-  
-  return a;
-}
-
-
-struct atom *
-make_float_atom (double f)
-{
-  struct atom *a = malloc (sizeof *a);
-
-  a->type = ATOM_FLOAT;
-  a->value_f = f;
-
-  return a;
 }

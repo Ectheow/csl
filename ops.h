@@ -16,6 +16,7 @@ void
 csl_twoswap (void);
 struct atom * atom_copy(struct atom *);
 
+list_item_t __csl_pop (void);
 void
 csl_define (void);
 
@@ -37,8 +38,9 @@ csl_push (struct atom *a);
 void
 csl_pop (void);
 
+void csl_pop_one (void);
 void csl_print (void);
-void csl_pop (void);
+
 
 
 void

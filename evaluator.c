@@ -1,5 +1,6 @@
 #include "evaluator.h"
 #include "ops.h"
+#include "atoms.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,8 +12,9 @@ struct evaluator evaluator = {
   0,
   0
 };
+
 struct dictionary *dict = NULL; /* global dictionary */
-void csl_pop (void);
+
 
 static void __evaluate_definition (struct stack *s);
 void evaluate_define (void);
@@ -20,37 +22,176 @@ void evaluate_definition (struct stack *s);
 
 void free_op (struct op *);
 
-void
-evaluate (void)
+int
+compare_string_to_op (char *str,
+		      op_t op)
 {
-  while (evaluator.current
-	 && evaluator.current->prev)
-    evaluator.eval_func ();
-  if (evaluator.current)
+  return !strcmp (str, op_name (op));
+}
+
+void
+insert_op (struct op *o)
+{
+  list_push_back (evaluator_dictionary (),
+		  make_list_item_from (o));
+}
+
+op_t
+lookup_op_sym (struct atom *a)
+{
+ 
+  list_item_t found = list_find (evaluator_dictionary (),
+				 atom_symbol_value (a),
+				 (int (*)(void *, void *))compare_string_to_op);
+  if (found)
+    return (op_t)list_item_get_value (found);
+  else
+    return NULL;
+}
+
+void
+evaluator_push_atom (atom_t a)
+{
+  evaluator_state () (a);
+}
+
+
+void
+evaluator_do_op (op_t o)
+{
+  csl_pop_one ();
+  for (list_item_t i = list_head (op_get_definition (o));
+       i;
+       i = list_item_next (i))
+    evaluator_state_normal_push (atom_copy (atom_from_list_item (i)));
+}
+
+
+void
+evaluator_state_normal_push (atom_t a)
+{
+  op_t op = NULL;
+  list_push (evaluator_list (),
+	     make_list_item_from_atom (a));
+  if (atom_is_symbol (a))
     {
-      printf (">>> Exiting evaluate, %p", evaluator.current->prev);
-      __csl_print (evaluator.current);
+      if ( (op = lookup_op_sym (a)))
+	{
+	  if (op_is_function (op))
+	    {
+	      op_function (op) ();
+	    }
+	  else if (op_is_definition (op))
+	    {
+	      evaluator_do_op (op);
+	    }
+	}
+      else
+	evaluator_die ("symbol %s isn't defined",
+		       atom_symbol_value (a));
+
+    }
+}
+
+
+void
+evaluator_state_definition_name (atom_t a)
+{
+  if (!atom_is_symbol (a))
+    evaluator_die ("I need a symbol");
+
+  op_t o = op_make (atom_symbol_value (a));
+  op_set_type (o, OP_DEFINITION);
+  op_set_definition (o, make_list ());
+  evaluator_set_current_definition (o);
+  evaluator_set_definition_state_body ();
+
+}
+void
+csl_if (void)
+{
+  csl_pop_one ();
+  atom_t a = atom_from_list_item (__csl_pop ());
+
+  if (atom_is_int (a)
+      && atom_int_value (a) == 0)
+    evaluator_set_if_was_true (0);
+  else
+    evaluator_set_if_was_true (1);
+  evaluator_set_if_body_state ();
+  atom_free (a);
+}
+
+void
+evaluator_state_if_body (atom_t a)
+{
+  if (! (atom_is_symbol (a)
+	 && (atom_compare_to_string (a, ENDIF)
+	     || atom_compare_to_string (a, ELSE))))
+    {
+      if (evaluator_if_was_true ())
+	evaluator_state_normal_push (a);
+      else
+	atom_free (a);
+    }
+  else if ( (atom_is_symbol (a)
+	     && atom_compare_to_string (a, ELSE)))
+    {
+      atom_free (a);
+      evaluator_set_else_body_state ();
+    }
+  else if ( (atom_is_symbol (a)
+	     && atom_compare_to_string (a, ENDIF)))
+    {
+      atom_free (a);
+      evaluator_set_if_was_true (-1);
+      evaluator_set_normal_state ();
+    }
+}
+
+void
+evaluator_state_else_body (atom_t a)
+{
+  if (! (atom_is_symbol (a)
+	 && atom_compare_to_string (a, ENDIF)))
+
+    {
+      if (!evaluator_if_was_true ())
+	evaluator_state_normal_push (a);
+    }
+  else if ( (atom_is_symbol (a)
+	     && atom_compare_to_string (a, ENDIF)))
+    {
+      atom_free (a);
+      evaluator_set_if_was_true (-1);
+      evaluator_set_normal_state ();
+    }
+}
+
+void
+evaluator_state_definition_body (atom_t a)
+{
+  if (! (atom_is_symbol (a)
+	 && atom_compare_to_string (a, ENDEF)))
+    {
+      list_push_back (op_get_definition (evaluator_get_current_definition ()),
+		      make_list_item_from_atom (a));
+      assert (op_get_definition (evaluator_get_current_definition ())->tail);
     }
   else
-    printf (">>> exiting evaluato no current\n");
-}
-
-struct atom *
-eval_current_atom (void)
-{
-  if (!evaluator.current)
-    evaluator_die ("stack underflow");
-  
-  return evaluator.current->atom;
+    {
+      insert_op (evaluator_get_current_definition ());
+      atom_free (a);
+      evaluator_set_current_definition (NULL);
+      evaluator_set_normal_state ();
+    }
 }
 
 void
-free_dictionary (struct dictionary *d)
+csl_define (void)
 {
-  if (!d)
-    return;
-  free_dictionary (d->next);
-  free_op (d->op);
+  csl_pop_one ();
+  evaluator_set_definition_state ();
 }
 
 struct op *
@@ -79,280 +220,33 @@ make_atomic_op (char *name, void (*op)(void))
 }
 
 void
-free_op (struct op *o)
+op_free (op_t o)
 {
   if (!o)
     return;
-  
-  if (o->type == OP_STACK)
-    free_stack (o->definition);
+
+  if (op_is_definition (o))
+    list_free (op_get_definition (o));
   free (o);
 }
 
 void
-insert_op (struct op *o)
+evaluator_init (void)
 {
-  struct dictionary *dent = malloc (sizeof *dent);
-
-  if (!dent)
-    evaluator_die ("EVALUATOR ERROR: can't allocate dent");
-  dent->op = o;
-  dent->next = dict;
-  dict = dent;
-}
-
-
-struct op *
-lookup_op_sym (struct atom *a)
-{
-  struct dictionary *d = dict;
-
-  do
-    {
-      if (!strcmp (d->op->op_name, a->value_sym))
-	return d->op;
-      d = d->next;
-    }
-  while (d);
-  
-  return NULL;
-  
-}
-
-void
-evaluate_op (struct op *o)
-{
-  if (!o)
-    evaluator_die ("null operator given to evaluate_op");
-  if (o->type == OP_STACK)
-    evaluate_definition (o->definition);
-  else if (o->type == OP_FUNCTION)
-    o->carry_out_op ();
-  else
-    evaluator_die ("bad operation type %d", o->type);
-    
-}
-
-void
-evaluate_symbol (void)
-{
-  struct op *o = NULL;
-
-  printf ("symbol: %s\n",
-  	  evaluator.current->atom->value_sym);
-  /* __print_stack (); */
-  if (! (o = lookup_op_sym (eval_current_atom ())))
-    evaluator_die ("evaluate_symbol: can't find this atom '%s'",
-		   evaluator.current->atom->value_sym);
-  
-  evaluate_op (o);
-}
-
-void
-evaluate_stack (void)
-{
-
-  while (evaluator.current)
-    {
-      if (evaluator.in_if || evaluator.in_def)
-	break;
-      if (eval_current_atom ()->type == ATOM_SYMBOL)
-	evaluate_symbol ();
-      else if (evaluator.current->prev)
-	evaluator.current = evaluator.current->prev;
-      else if (!evaluator.current->prev)
-	break;
-    }
-  printf (">>> outof stack current, prev %p %p \n", evaluator.current, evaluator.current->prev);
-  /* printf (">>>\n"); */
-  /* __csl_print (evaluator.current); */
-  /* printf ("<<<\n"); */
-}
-
-void
-evaluate_define (void)
-{
-  struct op *o = (struct op *)evaluator.state_info;
-  struct stack *s = NULL;
-  
-  /* If we're at the end of the definition, then pop these values off
-     onto the stack for their op. */
-  /*
-    stack picture
-    ENDEF -> ATOM1 -> ... -> ATOMN -> NAME -> DEFINE -> (REST OF STACK)
-  */
-
-  printf ("eval define\n");
-  printf (">>> definition...\n");
-  if (!o)
-    evaluator_die ("no allocated operation for the define");
-  while (evaluator.current)
-    {
-      if (evaluator.current->atom->type == ATOM_SYMBOL
-	  && !strcmp (evaluator.current->atom->value_sym, ENDEF))
-	{
-	  for (s = evaluator.current;
-	       s && (s->atom->type != ATOM_SYMBOL
-		     || strcmp (s->atom->value_sym, DEFINE));
-	       s=s->next)
-	    ;
-      
-	  if (!s)
-	    evaluator_die ("un-terminated definition stack, the stack has been corrupted.");
-	  if (s->prev->atom->type != ATOM_SYMBOL)
-	    evaluator_die ("no name for defined value, definitions must have names");
-	  
-	  strcpy (o->op_name, s->prev->atom->value_sym);
-	  o->definition = s->prev->prev;
-
-	  o->type = OP_STACK;
-	  evaluator.current = stack_splice_out (evaluator.current,
-						s->prev);
-	  
-	  csl_pop_one ();
-	  csl_pop_one ();
-	  csl_pop_one ();
-	  /* free_stack_elem (p); */
-	  /* free_stack_elem (s); */
-	  printf (">>> DEF\n");
-	  __csl_print (stack_head (o->definition));
-	  printf ("<<< DEF\n");
-	  evaluator.eval_func = evaluate_stack;
-	  insert_op (o);
-	  evaluator.in_def = 0;
-	}
-      else if (evaluator.current->prev)
-	evaluator.current = evaluator.current->prev;
-      else if (!evaluator.current->prev)
-	break;
-    }
-
-}
-
-void
-evaluate_if (void)
-{
-  struct stack *s = NULL,
-    *p = NULL,
-    *if_stack = NULL,
-    *else_sym = NULL,
-    *else_stack = NULL,
-    *if_sym = NULL;
-  int is_false;
-
-  while (evaluator.current)
-    {
-      printf (">>> if eval\n");
-      if (evaluator.current->atom->type == ATOM_SYMBOL
-	  && !strcmp (evaluator.current->atom->value_sym, ENDIF))
-	{
-	  for (s = evaluator.current;
-	       s && (s->atom->type != ATOM_SYMBOL
-		     || strcmp (s->atom->value_sym, IF));
-	       s = s->next)
-	      if (s->atom->type == ATOM_SYMBOL
-		  && !strcmp (s->atom->value_sym, ELSE))
-		  else_sym = s;
-
-	  if_sym = s;
-	  if (!s)
-	    evaluator_die ("empty 'if' stack");
-
-
-	  if_stack = if_sym->prev;
-
-	  if (else_sym)
-	    {
-	      else_stack = else_sym->prev;
-	      stack_splice_out (evaluator.current, else_sym);
-	      stack_splice_out (else_sym, if_sym);
-	      csl_pop_one ();
-	    }
-	  else
-	    {
-	      else_stack = NULL;
-	      stack_splice_out (evaluator.current, if_sym);
-	    }
-	  
-	  csl_pop_one ();
-	  csl_pop_one ();
-	      
-	  is_false = (evaluator.current->atom->type == ATOM_INT
-		      && evaluator.current->atom->value_i == 0);
-	  csl_pop_one ();
-	  if (is_false)
-	    {
-	      /* printf (">>> else\n"); */
-	      free_stack (if_stack);
-	      if (else_stack)
-		evaluator.current = stack_splice (evaluator.current, else_stack);
-	    }
-	  else
-	    {
-	      evaluator.current = stack_splice (evaluator.current, if_stack);
-	      if (else_stack)
-		free_stack (else_stack);
-	    }
-      
-	  evaluator.in_if = 0;
-	  evaluator.eval_func = evaluate_stack;
-	  break;
-	}
-      else if (evaluator.current->prev)
-	evaluator.current = evaluator.current->prev;
-      else if (!evaluator.current->prev)
-	break;
-    }
-}
-
-void
-csl_define (void)
-{
-  evaluator.state_info = make_stack_op ();
-  evaluator.eval_func = evaluate_define; /* don't pop though */
-  evaluator.in_def = 1;
-}
-
-void
-csl_if (void)
-{
-
-  printf (">>> evaluate if symbol\n");
-  evaluator.eval_func = evaluate_if;
-  evaluator.state_info = NULL;
-  evaluator.in_if = 1;
-}
-
-static void
-__evaluate_definition (struct stack *s)
-{
-  printf (">>> eval def\n");
-  __csl_print (s);
-  evaluator.current = stack_splice (evaluator.current, s);
-}
-
-void
-evaluate_definition (struct stack *s)
-{
-  csl_pop_one ();
-  printf (">> EVAL\n");
-  __csl_print (stack_head (s));
-  printf ("<<\n");
-  evaluator.current = stack_splice (evaluator.current,
-				    stack_tail (stack_copy (stack_head (s))));
-  printf (">>> TOTAL STACK\n");
-  __csl_print (stack_head (evaluator.current));
-  printf ("<<<\n");
-}
-
-void
-evaluator_init (struct stack *s)
-{
-  evaluator.eval_func = evaluate_stack;
+   /* evaluator.eval_func = evaluate_stack; */
   evaluator.state_info = NULL;
   evaluator.in_def = 0;
-  evaluator.current = s;
+  evaluator_set_current_definition (NULL);
+  evaluator_set_normal_state ();
+  /* evaluator.current = s; */
+  evaluator.list = make_list ();
+  evaluator.if_was_true = -1;
+  evaluator.dictionary = make_list ();
   
+  list_set_item_free_func (evaluator_list (),
+			   (void (*)(void *))atom_free);
+  list_set_item_free_func (evaluator_dictionary (),
+			   (void (*)(void *))op_free);
   insert_op (make_atomic_op ("PRINT", csl_print));
   insert_op (make_atomic_op ("+", csl_plus));
   insert_op (make_atomic_op ("-", csl_sub));
@@ -372,6 +266,6 @@ evaluator_init (struct stack *s)
 void
 evaluator_cleanup ()
 {
-  free_stack (evaluator.current);
-  free_dictionary (dict);  
+  list_free (evaluator_list ());
+  list_free (evaluator_dictionary ());
 }
